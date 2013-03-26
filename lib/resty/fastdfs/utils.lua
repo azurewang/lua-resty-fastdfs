@@ -4,6 +4,7 @@ local strsub  = string.sub
 local strbyte = string.byte
 local strrep  = string.rep
 local strchar = string.char
+local strrep  = string.rep
 local band    = bit.band
 local bor     = bit.bor
 local rshift  = bit.rshift
@@ -37,6 +38,9 @@ function buf2int(buf)
 end
 
 function fix_string(str, fix_length)
+    if not str then
+        return  strrep("\00", fix_length)
+    end
     local len = strlen(str)
     if len > fix_length then
         len = fix_length
@@ -67,4 +71,32 @@ function read_fdfs_header(sock)
     header.cmd = strbyte(buf, 9)
     header.status = strbyte(buf, 10)
     return header
+end
+
+function copy_sock(src, dst, size)
+    local copy_count = 0
+    local buff_size = 1024 * 32
+    while true do
+        local chunk, _, part = src:receive(buff_size)
+        if not part then
+            local bytes, err = dst:send(chunk)
+            if not bytes then
+                return nil, "copy sock send data error:" .. err
+            end
+            copy_count = copy_count + bytes
+        else
+            -- part have data, not read full end
+            local bytes, err = dst:send(part)
+            if not bytes then
+                return nil, "copy sock send data error:" .. err
+            end
+            copy_count = copy_count + bytes
+            break
+        end
+    end
+    if copy_count ~= size then
+        -- copy not full
+        return nil, "copy sock not full"
+    end
+    return 1
 end

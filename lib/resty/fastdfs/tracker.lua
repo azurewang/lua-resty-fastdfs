@@ -1,7 +1,6 @@
 -- Copyright (C) 2013 Azure Wang
 local utils   = require('resty.fastdfs.utils')
 local tcp = ngx.socket.tcp
-local tonumber = tonumber
 local setmetatable = setmetatable
 local error = error
 local strip_string = utils.strip_string
@@ -9,12 +8,8 @@ local fix_string   = utils.fix_string
 local buf2int      = utils.buf2int
 local int2buf      = utils.int2buf
 local read_fdfs_header = utils.read_fdfs_header
-
--- common mix
 local string = string
 local table  = table
-local bit    = bit
-local ngx    = ngx
 
 module(...)
 
