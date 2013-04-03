@@ -4,6 +4,7 @@ lua-resty-fastdfs
 Nonblocking Lua FastDFS driver library for ngx_lua
 
 <pre>
+
 local tracker = require('resty.fastdfs.tracker')
 local storage = require('resty.fastdfs.storage')
 local tk = tracker:new()
@@ -28,19 +29,27 @@ if not res then
     ngx.exit(200)
 end
 
+--[[
 local res, err = tk:query_storage_update1("group1/M00/00/00/wKhV-VFbkMQEAAAAAAAAAKbO3LA494.txt")
 if not res then
     ngx.say("query storage error:" .. err)
     ngx.exit(200)
 end
 
+local res, err = tk:query_storage_fetch1("group1/M00/00/00/wKhV-VFbkFfR1owfAAAAD6bO3LA348.txt")
 if not res then
     ngx.say("query storage error:" .. err)
     ngx.exit(200)
 end
 
-ngx.say("query_storage_store")
-_dump_res(res)
+]]
+
+if not res then
+    ngx.say("query storage error:" .. err)
+    ngx.exit(200)
+end
+
+
 
 local st = storage:new()
 st:set_timeout(3000)
@@ -49,6 +58,47 @@ if not ok then
     ngx.say("connect storage error:" .. err)
     ngx.exit(200)
 end
+
+
+
+local ok, err = st:delete_file1("group1/M00/00/00/wKhV-VFY71sEAAAAAAAAAKbO3LA277.txt")
+if not ok then
+    ngx.say("Fail:")
+else
+    ngx.say("OK")
+end
+
+
+
+local res, err = st:upload_by_buff('abcdedfg','txt')
+if not res then
+    ngx.say("upload error:" .. err)
+    ngx.exit(200)
+end
+
+
+local res, err = st:upload_appender_by_buff('abcdedfg','txt')
+if not res then
+    ngx.say("upload error:" .. err)
+    ngx.exit(200)
+end
+
+
+local ok, err = st:append_by_buff1("group1/M00/00/00/wKhV-VFbkMQEAAAAAAAAAKbO3LA494.txt","abcdedfg\n")
+if not ok then
+    ngx.say("Fail:")
+else
+    ngx.say("OK")
+end
+
+
+local res, err = tk:query_storage_update1("group1/M00/00/00/wKhV-VFbkFfR1owfAAAAD6bO3LA348.txt")
+if not res then
+    ngx.say("query storate error:" .. err)
+    ngx.exit(200)
+end
+
+
 
 
 </pre>
