@@ -61,6 +61,10 @@ function strip_string(str)
     end
 end
 
+function read_int(buf, pos)
+    return buf2int(strsub(buf, pos, pos + 7)), pos + 8
+end
+
 function read_fdfs_header(sock)
     local header = {}
     local buf, err = sock:receive(10)

@@ -7,6 +7,7 @@ local strip_string = utils.strip_string
 local fix_string   = utils.fix_string
 local buf2int      = utils.buf2int
 local int2buf      = utils.int2buf
+local read_int     = utils.read_int
 local read_fdfs_header = utils.read_fdfs_header
 local string = string
 local table  = table
@@ -245,9 +246,15 @@ function list_groups(self)
     if not hdr then
         return nil, "read tracker header error:" .. err
     end
+    local body_len
+    if self.v4 then
+        body_len = 105
+    else
+        body_len = 97
+    end
     -- read body
     if hdr.len > 0 then
-        if hdr.len % 97 ~= 0 then
+        if hdr.len % body_len ~= 0 then
             return nil, "response body error"
         end
         local body, err, part = sock:receive(hdr.len)
@@ -255,22 +262,26 @@ function list_groups(self)
             return nil, "read response body error"
         end
         local res = {}
-        res.count = hdr.len / 97
+        res.count = hdr.len / body_len
         res.groups = {}
         for i=1, res.count do
             local group = {}
-            local pos = 97 * (i-1) + 1
+            local pos = body_len * (i-1) + 1
             group.group_name = strip_string(string.sub(body, pos, pos + 16))
-            group.total_mb   = buf2int(string.sub(body, pos + 17, pos + 24))
-            group.free_mb    = buf2int(string.sub(body, pos + 25, pos + 32))
-            group.count      = buf2int(string.sub(body, pos + 33, pos + 40))
-            group.storage_port          = buf2int(string.sub(body, pos + 41, pos + 48))
-            group.storage_http_port     = buf2int(string.sub(body, pos + 49, pos + 56))
-            group.active_count          = buf2int(string.sub(body, pos + 57, pos + 64))
-            group.current_write_server  = buf2int(string.sub(body, pos + 65, pos + 72))
-            group.store_path_count      = buf2int(string.sub(body, pos + 73, pos + 80))
-            group.subdir_count_per_path = buf2int(string.sub(body, pos + 81, pos + 88))
-            group.current_trunk_file_id = buf2int(string.sub(body, pos + 89, pos + 96))
+            pos = pos + 17
+            if self.v4 then
+                group.total_mb, pos = read_int(body, pos)
+            end
+            group.free_mb, pos                = read_int(body, pos)
+            group.trunk_free_mb, pos          = read_int(body, pos) 
+            group.count, pos                  = read_int(body, pos) 
+            group.storage_port, pos           = read_int(body, pos)    
+            group.storage_http_port, pos      = read_int(body, pos)   
+            group.active_count, pos           = read_int(body, pos) 
+            group.current_write_server, pos   = read_int(body, pos) 
+            group.store_path_count, pos       = read_int(body, pos) 
+            group.subdir_count_per_path, pos  = read_int(body, pos) 
+            group.current_trunk_file_id, pos  = read_int(body, pos) 
             table.insert(res.groups, group)
         end
         return res
@@ -303,9 +314,15 @@ function list_one_group(self, group_name)
     if not hdr then
         return nil, "read tracker header error:" .. err
     end
+    local body_len
+    if self.v4 then
+        body_len = 105
+    else
+        body_len = 97
+    end
     -- read body
     if hdr.len > 0 then
-        if hdr.len ~= 97 then
+        if hdr.len ~= body_len then
             return nil, "response body length error"
         end
         local body, err, part = sock:receive(hdr.len)
@@ -315,16 +332,20 @@ function list_one_group(self, group_name)
         local group = {}
         local pos = 1
         group.group_name = strip_string(string.sub(body, pos, pos + 16))
-        group.total_mb   = buf2int(string.sub(body, pos + 17, pos + 24))
-        group.free_mb    = buf2int(string.sub(body, pos + 25, pos + 32))
-        group.count      = buf2int(string.sub(body, pos + 33, pos + 40))
-        group.storage_port          = buf2int(string.sub(body, pos + 41, pos + 48))
-        group.storage_http_port     = buf2int(string.sub(body, pos + 49, pos + 56))
-        group.active_count          = buf2int(string.sub(body, pos + 57, pos + 64))
-        group.current_write_server  = buf2int(string.sub(body, pos + 65, pos + 72))
-        group.store_path_count      = buf2int(string.sub(body, pos + 73, pos + 80))
-        group.subdir_count_per_path = buf2int(string.sub(body, pos + 81, pos + 88))
-        group.current_trunk_file_id = buf2int(string.sub(body, pos + 89, pos + 96))
+        pos = pos + 17
+        if self.v4 then
+            group.total_mb, pos = read_int(body, pos)
+        end
+        group.free_mb, pos                = read_int(body, pos)
+        group.trunk_free_mb, pos          = read_int(body, pos) 
+        group.count, pos                  = read_int(body, pos) 
+        group.storage_port, pos           = read_int(body, pos)    
+        group.storage_http_port, pos      = read_int(body, pos)   
+        group.active_count, pos           = read_int(body, pos) 
+        group.current_write_server, pos   = read_int(body, pos) 
+        group.store_path_count, pos       = read_int(body, pos) 
+        group.subdir_count_per_path, pos  = read_int(body, pos) 
+        group.current_trunk_file_id, pos  = read_int(body, pos) 
         return group
     else
         return nil, "response body is empty"
@@ -356,13 +377,13 @@ function list_servers(self, group_name)
         return nil, "read tracker header error:" .. err
     end
     if hdr.len > 0 then
-        local info_len
+        local body_len
         if self.v4 then
-            info_len = 600
+            body_len = 600
         else 
-            info_len = 584
+            body_len = 584
         end
-        if hdr.len  % info_len ~= 0 then
+        if hdr.len  % body_len ~= 0 then
             return nil, "response body length error"
         end
         local body, err, part = sock:receive(hdr.len)
@@ -370,11 +391,11 @@ function list_servers(self, group_name)
             return nil, "read response body error"
         end
         local res = {}
-        res.count = hdr.len / info_len
+        res.count = hdr.len / body_len
         res.servers = {}
         for i=1, res.count do
             local server = {}
-            local pos = info_len * (i-1) + 1
+            local pos = body_len * (i-1) + 1
             server.status = storage_status[string.byte(body, pos)]  or "UNKNOW"
             if self.v4 then
                 server.id          = strip_string(string.sub(body, pos+1  , pos+16))
@@ -390,111 +411,66 @@ function list_servers(self, group_name)
             end
             server.version = strip_string(string.sub(body, pos, pos+5))
             pos = pos + 6
-            server.join_time = format_time(buf2int(string.sub(body, pos, pos + 7)))
-            pos = pos + 8
-            server.up_time   = format_time(buf2int(string.sub(body, pos, pos + 7)))
-            pos = pos + 8
-            server.total_mb  = buf2int(string.sub(body, pos, pos + 7))
-            pos = pos + 8
-            server.free_mb   = buf2int(string.sub(body, pos, pos + 7))
-            pos = pos + 8
-            server.upload_priority  = buf2int(string.sub(body, pos, pos + 7))
-            pos = pos + 8
-            server.store_path_count = buf2int(string.sub(body, pos, pos + 7))
-            pos = pos + 8
-            server.subdir_count_per_path = buf2int(string.sub(body, pos, pos + 7))
-            pos = pos + 8
-            server.current_write_path = buf2int(string.sub(body, pos, pos + 7))
-            pos = pos + 8
-            server.storage_port = buf2int(string.sub(body, pos, pos + 7))
-            pos = pos + 8
-            server.storage_http_port = buf2int(string.sub(body, pos, pos + 7))
-            pos = pos + 8
+            local tmp
+            tmp, pos = read_int(body, pos)
+            server.join_time = format_time(tmp)
+            tmp, pos = read_int(body, pos)
+            server.up_time   = format_time(tmp)
+            server.total_mb, pos  = read_int(body, pos)
+            server.free_mb, pos                    = read_int(body, pos) 
+            server.upload_priority, pos            = read_int(body, pos) 
+            server.store_path_count, pos           = read_int(body, pos) 
+            server.subdir_count_per_path, pos      = read_int(body, pos) 
+            server.current_write_path, pos         = read_int(body, pos) 
+            server.storage_port, pos               = read_int(body, pos) 
+            server.storage_http_port, pos          = read_int(body, pos) 
             -- FDFSStorageStatBuff
-            server.total_upload_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_upload_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_append_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_append_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_modify_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_modify_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_truncate_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_truncate_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_set_meta_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_set_meta_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_delete_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_delete_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_download_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_download_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_get_meta_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_get_meta_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_create_link_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_create_link_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_delete_link_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_delete_link_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_upload_bytes = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_upload_bytes = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_append_bytes = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_append_bytes = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_modify_bytes = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_modify_bytes = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_download_bytes = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_download_bytes = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_sync_in_bytes = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_sync_in_bytes = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_sync_out_bytes = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_sync_out_bytes = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_file_open_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_file_open_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_file_read_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_file_read_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.total_file_write_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.success_file_write_count = buf2int(string.sub(body, pos, pos + 7)) 
-            pos = pos + 8
-            server.last_source_update = format_time(buf2int(string.sub(body, pos, pos + 7)))
-            pos = pos + 8
-            server.last_sync_update = format_time(buf2int(string.sub(body, pos, pos + 7)))
-            pos = pos + 8
-            server.last_synced_timestamp = format_time(buf2int(string.sub(body, pos, pos + 7)))
-            pos = pos + 8
-            server.last_heart_beat_time = format_time(buf2int(string.sub(body, pos, pos + 7))) 
-            pos = pos + 8
+            server.total_upload_count, pos         = read_int(body, pos) 
+            server.success_upload_count, pos       = read_int(body, pos) 
+            server.total_append_count, pos         = read_int(body, pos) 
+            server.success_append_count, pos       = read_int(body, pos) 
+            server.total_modify_count, pos         = read_int(body, pos) 
+            server.success_modify_count, pos       = read_int(body, pos) 
+            server.total_truncate_count, pos       = read_int(body, pos) 
+            server.success_truncate_count, pos     = read_int(body, pos) 
+            server.total_set_meta_count, pos       = read_int(body, pos) 
+            server.success_set_meta_count, pos     = read_int(body, pos) 
+            server.total_delete_count, pos         = read_int(body, pos) 
+            server.success_delete_count, pos       = read_int(body, pos) 
+            server.total_download_count, pos       = read_int(body, pos) 
+            server.success_download_count, pos     = read_int(body, pos) 
+            server.total_get_meta_count, pos       = read_int(body, pos) 
+            server.success_get_meta_count, pos     = read_int(body, pos) 
+            server.total_create_link_count, pos    = read_int(body, pos) 
+            server.success_create_link_count, pos  = read_int(body, pos) 
+            server.total_delete_link_count, pos    = read_int(body, pos) 
+            server.success_delete_link_count, pos  = read_int(body, pos) 
+            server.total_upload_bytes, pos         = read_int(body, pos) 
+            server.success_upload_bytes, pos       = read_int(body, pos) 
+            server.total_append_bytes, pos         = read_int(body, pos) 
+            server.success_append_bytes, pos       = read_int(body, pos) 
+            server.total_modify_bytes, pos         = read_int(body, pos) 
+            server.success_modify_bytes, pos       = read_int(body, pos) 
+            server.total_download_bytes, pos       = read_int(body, pos) 
+            server.success_download_bytes, pos     = read_int(body, pos) 
+            server.total_sync_in_bytes, pos        = read_int(body, pos) 
+            server.success_sync_in_bytes, pos      = read_int(body, pos) 
+            server.total_sync_out_bytes, pos       = read_int(body, pos) 
+            server.success_sync_out_bytes, pos     = read_int(body, pos) 
+            server.total_file_open_count, pos      = read_int(body, pos) 
+            server.success_file_open_count, pos    = read_int(body, pos) 
+            server.total_file_read_count, pos      = read_int(body, pos) 
+            server.success_file_read_count, pos    = read_int(body, pos) 
+            server.total_file_write_count, pos     = read_int(body, pos) 
+            server.success_file_write_count, pos   = read_int(body, pos) 
+            tmp, pos = read_int(body, pos)
+            server.last_source_update = format_time(tmp)
+            tmp, pos = read_int(body, pos)
+            server.last_sync_update   = format_time(tmp)
+            tmp, pos = read_int(body, pos)
+            server.last_synced_timestamp = format_time(tmp)
+            tmp, pos = read_int(body, pos)
+            server.last_heart_beat_time  = format_time(tmp)
             server.if_trunk_server = string.byte(body, pos)
             table.insert(res.servers, server)
         end
