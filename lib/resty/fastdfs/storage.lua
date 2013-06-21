@@ -377,15 +377,15 @@ function download_file_to_buff(self, group_name, file_name)
     end
     local out = {}
     -- file_offset(8)  download_bytes(8)  group_name(16)  file_name(n)
-    table.insert(out, int2buf(32 + string.len(storage.file_name)))
+    table.insert(out, int2buf(32 + string.len(file_name)))
     table.insert(out, string.char(STORAGE_PROTO_CMD_DOWNLOAD_FILE))
     table.insert(out, "\00")
     -- file_offset  download_bytes  8 + 8
     table.insert(out, string.rep("\00", 16))
     -- group name
-    table.insert(out, fix_string(storage.group_name, 16))
+    table.insert(out, fix_string(group_name, 16))
     -- file name
-    table.insert(out, storage.file_name)
+    table.insert(out, file_name)
     -- send
     local ok, err = self:send_request(out)
     if not ok then
@@ -411,15 +411,15 @@ function download_file_to_callback(self,group_name, file_name, cb)
     end
     local out = {}
     -- file_offset(8)  download_bytes(8)  group_name(16)  file_name(n)
-    table.insert(out, int2buf(32 + string.len(storage.file_name)))
+    table.insert(out, int2buf(32 + string.len(file_name)))
     table.insert(out, string.char(STORAGE_PROTO_CMD_DOWNLOAD_FILE))
     table.insert(out, "\00")
     -- file_offset  download_bytes  8 + 8
     table.insert(out, string.rep("\00", 16))
     -- group name
-    table.insert(out, fix_string(storage.group_name, 16))
+    table.insert(out, fix_string(group_name, 16))
     -- file name
-    table.insert(out, storage.file_name)
+    table.insert(out, file_name)
     -- send
     local ok, err = self:send_request(out)
     if not ok then
