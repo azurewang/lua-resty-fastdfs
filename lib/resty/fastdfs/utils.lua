@@ -13,7 +13,7 @@ local strlen  = string.len
 
 module(...)
 
-local VERSION = '0.1'
+local VERSION = '0.1.1'
 
 function  split_fileid(fileid)
     local pos = strfind(fileid, '/')
@@ -32,9 +32,10 @@ function int2buf(n)
 end
 
 function buf2int(buf)
-    -- only trans 32bit  full is 64bit
-    local c1, c2, c3, c4 = strbyte(buf, 5, 8)
-    return bor(lshift(c1, 24), lshift(c2, 16),lshift(c3, 8), c4)
+    local c1, c2, c3, c4, c5, c6, c7, c8 = strbyte(buf, 1, 8)
+    local lo  = bor(lshift(c5, 24), lshift(c5, 16),lshift(c7, 8), c8)
+    local hi = bor(lshift(c1, 24), lshift(c2, 16),lshift(c3, 8), c4)
+    return lo + hi * 4294967296
 end
 
 function fix_string(str, fix_length)
