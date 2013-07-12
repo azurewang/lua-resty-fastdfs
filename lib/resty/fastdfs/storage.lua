@@ -15,7 +15,7 @@ local error = error
 
 module(...)
 
-local VERSION = '0.1'
+local VERSION = '0.1.1'
 
 local FDFS_PROTO_PKG_LEN_SIZE = 8
 local FDFS_FILE_EXT_NAME_MAX_LEN = 6
@@ -120,7 +120,7 @@ function read_download_result(self)
     if not sock then
         return nil, "not initialized"
     end
-    local hdr = read_fdfs_header(sock)
+    local hdr, err = read_fdfs_header(sock)
     if not hdr then
         return nil, "read storage header error:" .. err
     end
@@ -143,7 +143,7 @@ function read_download_result_cb(self, cb)
         return nil, "not initialized"
     end
     -- read request header
-    local hdr = read_fdfs_header(sock)
+    local hdr, err = read_fdfs_header(sock)
     if not hdr then
         return nil, "read storage header error:" .. err
     end
