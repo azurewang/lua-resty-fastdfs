@@ -13,7 +13,7 @@ local strlen  = string.len
 
 module(...)
 
-local VERSION = '0.1.1'
+local VERSION = '0.1.2'
 
 function  split_fileid(fileid)
     local pos = strfind(fileid, '/')
@@ -33,7 +33,7 @@ end
 
 function buf2int(buf)
     local c1, c2, c3, c4, c5, c6, c7, c8 = strbyte(buf, 1, 8)
-    local lo  = bor(lshift(c5, 24), lshift(c5, 16),lshift(c7, 8), c8)
+    local lo  = bor(lshift(c5, 24), lshift(c6, 16),lshift(c7, 8), c8)
     local hi = bor(lshift(c1, 24), lshift(c2, 16),lshift(c3, 8), c4)
     return lo + hi * 4294967296
 end
