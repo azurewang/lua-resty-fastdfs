@@ -15,7 +15,7 @@ local date = os.date
 
 module(...)
 
-local VERSION = '0.2'
+local VERSION = '0.2.1'
 
 local FDFS_PROTO_PKG_LEN_SIZE = 8
 local FDFS_FILE_EXT_NAME_MAX_LEN = 6
@@ -204,7 +204,7 @@ function query_storage_fetch(self, group_name, file_name)
         res.port       = buf2int(string.sub(buf, 32, 39))
         return res
     else
-        return nil, "not receive data"
+        return nil, "error no:" .. hdr.status
     end
 end
 
