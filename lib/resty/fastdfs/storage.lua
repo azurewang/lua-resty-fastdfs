@@ -15,7 +15,7 @@ local error = error
 
 module(...)
 
-local VERSION = '0.1.1'
+local VERSION = '0.1.2'
 
 local FDFS_PROTO_PKG_LEN_SIZE = 8
 local FDFS_FILE_EXT_NAME_MAX_LEN = 6
@@ -457,7 +457,7 @@ function append_by_buff(self, group_name, file_name, buff)
     table.insert(out, file_name)
     table.insert(out, buff)
     -- send request
-    local ok, err = self:send_request(out, sock, size)
+    local ok, err = self:send_request(out)
     if not ok then
         return nil, err
     end
