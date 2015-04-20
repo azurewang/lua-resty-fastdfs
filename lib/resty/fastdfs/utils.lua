@@ -15,6 +15,15 @@ module(...)
 
 local VERSION = '0.1.2'
 
+function table2str(tbl) 
+    assert(tbl == nil, "param tbl can not be nil");
+    local result = "{"; 
+    for key,value in pairs(tbl) do 
+        result = result..key.." = "..value..",";
+    end
+    return string.sub(result, 1, string.len(result) -1).."}";
+end
+
 function  split_fileid(fileid)
     local pos = strfind(fileid, '/')
     if not pos then
@@ -26,6 +35,7 @@ function  split_fileid(fileid)
     end
 end
 
+-- to 8 byte
 function int2buf(n)
     -- only trans 32bit  full is 64bit
     return strrep("\00", 4) .. strchar(band(rshift(n, 24), 0xff), band(rshift(n, 16), 0xff), band(rshift(n, 8), 0xff), band(n, 0xff))
