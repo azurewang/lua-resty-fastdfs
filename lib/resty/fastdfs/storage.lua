@@ -16,10 +16,9 @@ local pairs = pairs
 
 module(...)
 
-local VERSION = '0.1.1'
+local VERSION = '0.2.0'
 
 local FDFS_PROTO_PKG_LEN_SIZE = 8
-local FDFS_GROUP_NAME_MAX_LEN = 16
 local FDFS_FILE_EXT_NAME_MAX_LEN = 6
 local FDFS_FILE_PREFIX_MAX_LEN = 16
 local FDFS_PROTO_CMD_QUIT = 82
@@ -32,6 +31,10 @@ local STORAGE_PROTO_CMD_UPLOAD_SLAVE_FILE = 21
 local STORAGE_PROTO_CMD_QUERY_FILE_INFO = 22
 local STORAGE_PROTO_CMD_UPLOAD_APPENDER_FILE = 23
 local STORAGE_PROTO_CMD_APPEND_FILE = 24
+local STORAGE_PROTO_CMD_MODIFY_FILE = 34
+local STORAGE_PROTO_CMD_TRUNCATE_FILE = 36
+
+local FDFS_GROUP_NAME_MAX_LEN = 16
 local FDFS_RECORD_SEPERATOR = '='
 local FDFS_FIELD_SEPERATOR = ';'
 local STORAGE_SET_METADATA_FLAG_OVERWRITE = 'O'
@@ -61,7 +64,7 @@ function connect(self, opts)
     if not ok then
         return nil, err
     end
-    return 1
+    return true
 end
 
 function send_request(self, req, data_sock, size)
@@ -79,7 +82,7 @@ function send_request(self, req, data_sock, size)
             return nil, "storate send data by sock error:" .. err
         end
     end
-    return 1
+    return true
 end
 
 function read_upload_result(self)
@@ -116,7 +119,7 @@ function read_update_result(self, op_name)
         return nil, "read storage header error:" .. err
     end
     if hdr.status == 0 then
-        return 1
+        return true
     else
         return nil, op_name .. " error:" .. hdr.status
     end
@@ -175,28 +178,29 @@ function read_download_result_cb(self, cb)
         end
         cb(data)
     end
-    return 1
+    return true
+end
+
+-- build upload method
+local function build_upload_request(cmd, size, ext, path_index)
+    local req = {}
+    table.insert(req, int2buf(size + 15))  -- length
+    table.insert(req, string.char(cmd))    -- command
+    table.insert(req, "\00")               -- status
+    table.insert(req, string.char(path_index))
+    table.insert(req, int2buf(size))
+    table.insert(req, fix_string(ext, FDFS_FILE_EXT_NAME_MAX_LEN))
+    return req
 end
 
 -- upload method
 function upload_by_buff(self, buff, ext)
     local size = string.len(buff)
-    -- send header
-    local out = {}
-    table.insert(out, int2buf(size + 15))
-    table.insert(out, string.char(STORAGE_PROTO_CMD_UPLOAD_FILE))
-    -- status
-    table.insert(out, "\00")
-    -- store_path_index
-    table.insert(out, string.char(self.store_path_index))
-    -- filesize
-    table.insert(out, int2buf(size))
-    -- exitname
-    table.insert(out, fix_string(ext, FDFS_FILE_EXT_NAME_MAX_LEN))
-    -- data
-    table.insert(out, buff)
+    -- build request
+    local req = build_upload_request(STORAGE_PROTO_CMD_UPLOAD_FILE, size, ext, self.store_path_index)
+    table.insert(req, buff)
     -- send
-    local ok, err = self:send_request(out)
+    local ok, err = self:send_request(req)
     if not ok then
         return nil, err
     end
@@ -204,44 +208,24 @@ function upload_by_buff(self, buff, ext)
 end
 
 function upload_by_sock(self, sock, size, ext)
-    -- send header
-    local out = {}
-    table.insert(out, int2buf(size + 15))
-    table.insert(out, string.char(STORAGE_PROTO_CMD_UPLOAD_FILE))
-    -- status
-    table.insert(out, "\00")
-    -- store_path_index
-    table.insert(out, string.char(self.store_path_index))
-    -- filesize
-    table.insert(out, int2buf(size))
-    -- exitname
-    table.insert(out, fix_string(ext, FDFS_FILE_EXT_NAME_MAX_LEN))
+    -- build request
+    local req = build_upload_request(STORAGE_PROTO_CMD_UPLOAD_FILE, size, ext, self.store_path_index)
     -- send
-    local ok, err = self:send_request(out, sock, size)
+    local ok, err = self:send_request(req, sock, size)
     if not ok then
         return nil, err
     end
     return self:read_upload_result()
 end
 
+-- uoload_appender method
 function upload_appender_by_buff(self, buff, ext)
     local size = string.len(buff)
-    -- send header
-    local out = {}
-    table.insert(out, int2buf(size + 15))
-    table.insert(out, string.char(STORAGE_PROTO_CMD_UPLOAD_APPENDER_FILE))
-    -- status
-    table.insert(out, "\00")
-    -- store_path_index
-    table.insert(out, string.char(self.store_path_index))
-    -- filesize
-    table.insert(out, int2buf(size))
-    -- exitname
-    table.insert(out, fix_string(ext, FDFS_FILE_EXT_NAME_MAX_LEN))
-    -- data
-    table.insert(out, buff)
+    -- build request
+    local req = build_upload_request(STORAGE_PROTO_CMD_UPLOAD_APPENDER_FILE, size, ext, self.store_path_index)
+    table.insert(req, buff)
     -- send
-    local ok, err = self:send_request(out)
+    local ok, err = self:send_request(req)
     if not ok then
         return nil, err
     end
@@ -249,50 +233,41 @@ function upload_appender_by_buff(self, buff, ext)
 end
 
 function upload_appender_by_sock(self, sock, size, ext)
-    -- send header
-    local out = {}
-    table.insert(out, int2buf(size + 15))
-    table.insert(out, string.char(STORAGE_PROTO_CMD_UPLOAD_APPENDER_FILE))
-    -- status
-    table.insert(out, "\00")
-    -- store_path_index
-    table.insert(out, string.char(self.store_path_index))
-    -- filesize
-    table.insert(out, int2buf(size))
-    -- exitname
-    table.insert(out, fix_string(ext, FDFS_FILE_EXT_NAME_MAX_LEN))
+    -- build request
+    local req = build_upload_request(STORAGE_PROTO_CMD_UPLOAD_APPENDER_FILE, size, ext, self.store_path_index)
     -- send
-    local ok, err = self:send_request(out, sock, size)
+    local ok, err = self:send_request(req, sock, size)
     if not ok then
         return nil, err
     end
     return self:read_upload_result()
 end
 
-function upload_slave_by_buff(self, group_name, file_name, prefix, buff, ext)
-    if not group_name then
-        return nil , "not group_name"
-    end
-    if not file_name then
-        return nil, "not file_name"
-    end
-    -- default ext is the same as file_name
+-- build upload_slave_request method
+local function build_upload_slave_request(cmd, file_name, prefix, size , ext)
+    local req = {}
+    table.insert(req, int2buf(16 + FDFS_FILE_PREFIX_MAX_LEN + FDFS_FILE_EXT_NAME_MAX_LEN + string.len(file_name) + size))
+    table.insert(req, string.char(cmd))
+    table.insert(req, "\00")
+    table.insert(req, int2buf(string.len(file_name)))
+    table.insert(req, int2buf(size))
+    table.insert(req, fix_string(prefix, FDFS_FILE_PREFIX_MAX_LEN))
+    table.insert(req, fix_string(ext, FDFS_FILE_EXT_NAME_MAX_LEN))
+    table.insert(req, file_name)
+    return req
+end
+
+-- upload_slave method
+function upload_slave_by_buff(self, file_name, prefix, buff, ext)
+    local size = string.len(buff)
     if not ext then
         ext = string.match(file_name, "%.(%w+)$")
     end
-    -- master_filename_len file_size prefix ext_name master_filename body
-    local out = {}
-    table.insert(out, int2buf(16 + FDFS_FILE_PREFIX_MAX_LEN + FDFS_FILE_EXT_NAME_MAX_LEN + string.len(file_name) + string.len(buff)))
-    table.insert(out, string.char(STORAGE_PROTO_CMD_UPLOAD_SLAVE_FILE))
-    table.insert(out, "\00")
-    table.insert(out, int2buf(string.len(file_name)))
-    table.insert(out, int2buf(string.len(buff)))
-    table.insert(out, fix_string(prefix, FDFS_FILE_PREFIX_MAX_LEN))
-    table.insert(out, fix_string(ext, FDFS_FILE_EXT_NAME_MAX_LEN))
-    table.insert(out, file_name)
-    table.insert(out, buff)
+    -- build request
+    local req = build_upload_slave_request(STORAGE_PROTO_CMD_UPLOAD_SLAVE_FILE, file_name, prefix, size, ext)
+    table.insert(req, buff)
     -- send
-    local ok, err = self:send_request(out)
+    local ok, err = self:send_request(req)
     if not ok then
         return nil, err
     end
@@ -304,32 +279,16 @@ function upload_slave_by_buff1(self, fileid, prefix, buff, ext)
     if not group_name or not file_name then
         return nil, "fileid error:" .. err
     end
-    return self:upload_slave_by_buff(group_name, file_name, prefix, buff, ext)
+    return self:upload_slave_by_buff(file_name, prefix, buff, ext)
 end
 
-function upload_slave_by_sock(self, group_name, file_name, prefix, sock, size, ext)
-    if not group_name then
-        return nil , "not group_name"
-    end
-    if not file_name then
-        return nil, "not file_name"
-    end
-    -- default ext is the same as file_name
+function upload_slave_by_sock(self, file_name, prefix, sock, size, ext)
     if not ext then
         ext = string.match(file_name, "%.(%w+)$")
     end
-    -- master_filename_len file_size prefix ext_name master_filename body
-    local out = {}
-    table.insert(out, int2buf(16 + FDFS_FILE_PREFIX_MAX_LEN + FDFS_FILE_EXT_NAME_MAX_LEN + string.len(file_name) + size))
-    table.insert(out, string.char(STORAGE_PROTO_CMD_UPLOAD_SLAVE_FILE))
-    table.insert(out, "\00")
-    table.insert(out, int2buf(string.len(file_name)))
-    table.insert(out, int2buf(size))
-    table.insert(out, fix_string(prefix, FDFS_FILE_PREFIX_MAX_LEN))
-    table.insert(out, fix_string(ext, FDFS_FILE_EXT_NAME_MAX_LEN))
-    table.insert(out, file_name)
+    local req = build_upload_slave_request(STORAGE_PROTO_CMD_UPLOAD_SLAVE_FILE, file_name, prefix, size, ext)
     -- send
-    local ok, err = self:send_request(out, sock, size)
+    local ok, err = self:send_request(req, sock, size)
     if not ok then
         return nil, err
     end
@@ -341,30 +300,270 @@ function upload_slave_by_sock1(self, fileid, prefix, sock, size, ext)
     if not group_name or not file_name then
         return nil, "fileid error:" .. err
     end
-    return  self:upload_slave_by_sock(group_name, file_name, prefix, sock, size, ext)
+    return  self:upload_slave_by_sock(file_name, prefix, sock, size, ext)
 end
--- delete method
-function delete_file(self, group_name, file_name)
+
+-- build delete request
+local function build_delete_request(cmd, group_name, file_name)
     if not group_name then
         return nil , "not group_name"
     end
     if not file_name then
         return nil, "not file_name"
     end
-    local out = {}
-    table.insert(out, int2buf(16 + string.len(file_name)))
-    table.insert(out, string.char(STORAGE_PROTO_CMD_DELETE_FILE))
-    table.insert(out, "\00")
-    -- group name
-    table.insert(out, fix_string(group_name, 16))
-    -- file name
-    table.insert(out, file_name)
+    local req = {}
+    table.insert(req, int2buf(16 + string.len(file_name)))
+    table.insert(req, string.char(cmd))
+    table.insert(req, "\00")
+    table.insert(req, fix_string(group_name, 16))
+    table.insert(req, file_name)
+    return req
+end
+
+-- delete method
+function delete_file(self, group_name, file_name)
+    local req, err = build_delete_request(STORAGE_PROTO_CMD_DELETE_FILE, group_name, file_name)
+    if not req then
+        return nil, err
+    end
     -- send request
-    local ok, err = self:send_request(out)
+    local ok, err = self:send_request(req)
     if not ok then
         return nil, err
     end
     return self:read_update_result("delete_file")
+end
+
+function delete_file1(self, fileid)
+    local group_name, file_name, err = split_fileid(fileid)
+    if not group_name or not file_name then
+        return nil, "fileid error:" .. err
+    end
+    return self:delete_file(group_name, file_name)
+end
+
+-- build truncate method
+local function build_truncate_request(cmd, file_name, remain_bytes)
+    if not file_name then
+        return nil, "not file_name"
+    end
+    local file_name_len = string.len(file_name)
+    local req = {}
+    table.insert(req, int2buf(16 + file_name_len))
+    table.insert(req, string.char(cmd))
+    table.insert(req, "\00")
+    table.insert(req, int2buf(file_name_len))
+    table.insert(req, int2buf(remain_bytes))
+    table.insert(req, file_name)
+    return req
+end
+-- truncate method
+function truncate_file(self, file_name)
+    local req, err = build_truncate_request(STORAGE_PROTO_CMD_TRUNCATE_FILE, file_name, 0)
+    if not req then
+        return nil, err
+    end
+    -- send request
+    local ok, err = self:send_request(req)
+    if not ok then
+        return nil, err
+    end
+    return self:read_update_result("truncate_file")
+end
+
+function truncate_file1(self, fileid)
+    local group_name, file_name, err = split_fileid(fileid)
+    if not group_name or not file_name then
+        return nil, "fileid error:" .. err
+    end
+    return self:truncate_file(file_name)
+end
+
+-- build download request
+local function build_download_request(cmd, group_name, file_name)
+    if not group_name then
+        return nil , "not group_name"
+    end
+    if not file_name then
+        return nil, "not file_name"
+    end
+    local req = {}
+    table.insert(req, int2buf(32 + string.len(file_name)))
+    table.insert(req, string.char(cmd))
+    table.insert(req, "\00")
+    table.insert(req, string.rep("\00", 16))    -- download file offset
+    table.insert(req, fix_string(group_name, 16))
+    table.insert(req, file_name)
+    return req
+end
+
+-- download method
+function download_file_to_buff(self, group_name, file_name)
+    local req, err = build_download_request(STORAGE_PROTO_CMD_DOWNLOAD_FILE, group_name, file_name)
+    if not req then
+        return nil, err
+    end
+    -- send
+    local ok, err = self:send_request(req)
+    if not ok then
+        return nil, err
+    end
+    return self:read_download_result()
+end
+
+function download_file_to_buff1(self, fileid)
+    local group_name, file_name, err = split_fileid(fileid)
+    if not group_name or not file_name then
+        return nil, "fileid error:" .. err
+    end
+    return self:download_file_to_buff(group_name, file_name)
+end
+
+function download_file_to_callback(self,group_name, file_name, cb)
+    local req, err = build_download_request(STORAGE_PROTO_CMD_DOWNLOAD_FILE, group_name, file_name)
+    if not req then
+        return nil, err
+    end
+    -- send
+    local ok, err = self:send_request(req)
+    if not ok then
+        return nil, err
+    end
+    return self:read_download_result_cb(cb)
+end
+
+function download_file_to_callback1(self, fileid, cb)
+    local group_name, file_name, err = split_fileid(fileid)
+    if not group_name or not file_name then
+        return nil, "fileid error:" .. err
+    end
+    return self:download_file_to_callback(group_name, file_name, cb)
+end
+
+-- build append request
+local function build_append_request(cmd, group_name, file_name, size)
+    if not group_name then
+        return nil , "not group_name"
+    end
+    if not file_name then
+        return nil, "not file_name"
+    end
+    local file_name_len = string.len(file_name)
+    local req = {}
+    table.insert(req, int2buf(16 + size + file_name_len))
+    table.insert(req, string.char(cmd))
+    table.insert(req, "\00")
+    table.insert(req, int2buf(file_name_len))
+    table.insert(req, int2buf(size))
+    table.insert(req, file_name)
+    return req
+end
+
+-- append method
+function append_by_buff(self, group_name, file_name, buff)
+    local size = string.len(buff)
+    local req, err = build_append_request(STORAGE_PROTO_CMD_APPEND_FILE, group_name, file_name, size)
+    if not req then
+        return nil, err
+    end
+    table.insert(req, buff)
+    -- send request
+    local ok, err = self:send_request(req)
+    if not ok then
+        return nil, err
+    end
+    return self:read_update_result("append_by_buff")
+end
+
+function append_by_buff1(self, fileid, buff)
+    local group_name, file_name, err = split_fileid(fileid)
+    if not group_name or not file_name then
+        return nil, "fileid error:" .. err
+    end
+    return self:append_by_buff(group_name, file_name, buff)
+end
+
+function append_by_sock(self, group_name, file_name, sock, size)
+    local req, err = build_append_request(STORAGE_PROTO_CMD_APPEND_FILE, group_name, file_name, size)
+    if not req then
+        return nil, err
+    end
+    -- send data
+    local ok, err = self:send_request(req, sock, size)
+    if not ok then
+        return nil, err
+    end
+    return self:read_update_result("append_by_sock")
+end
+
+function append_by_sock1(self, fileid, sock, size)
+    local group_name, file_name, err = split_fileid(fileid)
+    if not group_name or not file_name then
+        return nil, "fileid error:" .. err
+    end
+    return self:append_by_sock(group_name, file_name, sock, size)
+end
+
+-- build modify request
+local function build_modify_request(cmd, file_name, offset, size)
+    if not file_name then
+        return nil, "not file_name"
+    end
+    local file_name_len = string.len(file_name)
+    local req = {}
+    table.insert(req, int2buf(size + file_name_len + 24))
+    table.insert(req, string.char(STORAGE_PROTO_CMD_MODIFY_FILE))
+    table.insert(req, "\00")
+    table.insert(req, int2buf(file_name_len))
+    table.insert(req, int2buf(offset))
+    table.insert(req, int2buf(size))
+    table.insert(req, file_name)
+    return req
+end
+
+-- modify method
+function modify_by_buff(self, file_name, buff, offset)
+    local size = string.len(buff)
+    local req, err = build_modify_request(STORAGE_PROTO_CMD_MODIFY_FILE, file_name, offset, size)
+    table.insert(req, buff)
+    if not req then
+        return nil, err
+    end
+    -- send request
+    local ok, err = self:send_request(req)
+    if not ok then
+        return nil, err
+    end
+    return self:read_update_result("modify_by_buff")
+end
+
+function modify_by_buff1(self, fileid, buff, offset)
+    local group_name, file_name, err = split_fileid(fileid)
+    if not group_name or not file_name then
+        return nil, "fileid error:" .. err
+    end
+    return self:modify_by_buff(file_name, buff, offset)
+end
+
+function modify_by_sock(self, file_name, sock, size, offset)
+    local req, err = build_modify_request(STORAGE_PROTO_CMD_MODIFY_FILE, file_name, offset, size)
+    if not req then
+        return nil, err
+    end
+    -- send data
+    local ok, err = self:send_request(req, sock, size)
+    if not ok then
+        return nil, err
+    end
+    return self:read_update_result("modify_by_sock")
+end
+
+function modify_by_sock1(self, fileid, sock, size, offset)
+    local group_name, file_name, err = split_fileid(fileid)
+    if not group_name or not file_name then
+        return nil, "fileid error:" .. err
+    end
+    return self:modify_by_sock(file_name, sock, size, offset)
 end
 
 local function pack_meta_data(meta_data)
@@ -385,9 +584,9 @@ function set_metadata(self, group_name, file_name, meta_data)
     local out = {}
     -- header
     local meta_str = pack_meta_data(meta_data)
---    ngx.log(ngx.ALERT,'meta_str: '..meta_str..', length: '..string.len(meta_str))
+    --    ngx.log(ngx.ALERT,'meta_str: '..meta_str..', length: '..string.len(meta_str))
     local body_len = FDFS_PROTO_PKG_LEN_SIZE + FDFS_PROTO_PKG_LEN_SIZE + 1 + FDFS_GROUP_NAME_MAX_LEN + string.len(file_name) + string.len(meta_str)
---    ngx.log(ngx.ALERT,'body_len: '..body_len)
+    --    ngx.log(ngx.ALERT,'body_len: '..body_len)
     table.insert(out, int2buf(body_len))
     table.insert(out, string.char(STORAGE_PROTO_CMD_SET_METADATA))
     table.insert(out, "\00")
@@ -432,152 +631,6 @@ function get_metadata(self, group_name, file_name)
     return self:read_download_result("get_metadata")
 end
 
-function delete_file1(self, fileid)
-    local group_name, file_name, err = split_fileid(fileid)
-    if not group_name or not file_name then
-        return nil, "fileid error:" .. err
-    end
-    return self:delete_file(group_name, file_name)
-end
--- download method
-function download_file_to_buff(self, group_name, file_name)
-    if not group_name then
-        return nil , "not group_name"
-    end
-    if not file_name then
-        return nil, "not file_name"
-    end
-    local out = {}
-    -- file_offset(8)  download_bytes(8)  group_name(16)  file_name(n)
-    table.insert(out, int2buf(32 + string.len(file_name)))
-    table.insert(out, string.char(STORAGE_PROTO_CMD_DOWNLOAD_FILE))
-    table.insert(out, "\00")
-    -- file_offset  download_bytes  8 + 8
-    table.insert(out, string.rep("\00", 16))
-    -- group name
-    table.insert(out, fix_string(group_name, 16))
-    -- file name
-    table.insert(out, file_name)
-    -- send
-    local ok, err = self:send_request(out)
-    if not ok then
-        return nil, err
-    end
-    return self:read_download_result()
-end
-
-function download_file_to_buff1(self, fileid)
-    local group_name, file_name, err = split_fileid(fileid)
-    if not group_name or not file_name then
-        return nil, "fileid error:" .. err
-    end
-    return self:download_file_to_buff(group_name, file_name)
-end
-
-function download_file_to_callback(self,group_name, file_name, cb)
-    if not group_name then
-        return nil , "not group_name"
-    end
-    if not file_name then
-        return nil, "not file_name"
-    end
-    local out = {}
-    -- file_offset(8)  download_bytes(8)  group_name(16)  file_name(n)
-    table.insert(out, int2buf(32 + string.len(file_name)))
-    table.insert(out, string.char(STORAGE_PROTO_CMD_DOWNLOAD_FILE))
-    table.insert(out, "\00")
-    -- file_offset  download_bytes  8 + 8
-    table.insert(out, string.rep("\00", 16))
-    -- group name
-    table.insert(out, fix_string(group_name, 16))
-    -- file name
-    table.insert(out, file_name)
-    -- send
-    local ok, err = self:send_request(out)
-    if not ok then
-        return nil, err
-    end
-    return self:read_download_result_cb(cb)
-end
-
-function download_file_to_callback1(self, fileid, cb)
-    local group_name, file_name, err = split_fileid(fileid)
-    if not group_name or not file_name then
-        return nil, "fileid error:" .. err
-    end
-    return self:download_file_to_callback(group_name, file_name, cb)
-end
-
--- append method
-function append_by_buff(self, group_name, file_name, buff)
-    if not group_name then
-        return nil , "not group_name"
-    end
-    if not file_name then
-        return nil, "not file_name"
-    end
-    local file_size = string.len(buff)
-    local file_name_len = string.len(file_name)
-    -- send request
-    local out = {}
-    table.insert(out, int2buf(file_size + file_name_len + 16))
-    table.insert(out, string.char(STORAGE_PROTO_CMD_APPEND_FILE))
-    -- status
-    table.insert(out, "\00")
-    table.insert(out, int2buf(file_name_len))
-    table.insert(out, int2buf(file_size))
-    table.insert(out, file_name)
-    table.insert(out, buff)
-    -- send request
-    local ok, err = self:send_request(out, sock, size)
-    if not ok then
-        return nil, err
-    end
-    return self:read_update_result("append_by_buff")
-end
-
-function append_by_buff1(self, fileid, buff)
-    local group_name, file_name, err = split_fileid(fileid)
-    if not group_name or not file_name then
-        return nil, "fileid error:" .. err
-    end
-    return self:append_by_buff(group_name, file_name, buff)
-end
-
-function append_by_sock(self, group_name, file_name, sock, size)
-    if not group_name then
-        return nil , "not group_name"
-    end
-    if not file_name then
-        return nil, "not file_name"
-    end
-    local file_size = string.len(buff)
-    local file_name_len = string.len(file_name)
-    -- send request
-    local out = {}
-    table.insert(out, int2buf(file_size + file_name_len + 16))
-    table.insert(out, string.char(STORAGE_PROTO_CMD_APPEND_FILE))
-    -- status
-    table.insert(out, "\00")
-    table.insert(out, int2buf(file_name_len))
-    table.insert(out, int2buf(file_size))
-    table.insert(out, file_name)
-    -- send data
-    local ok, err = self:send_request(out, sock, size)
-    if not ok then
-        return nil, err
-    end
-    return self:read_update_result("append_by_sock")
-end
-
-function append_by_sock1(self, fileid, sock, size)
-    local group_name, file_name, err = split_fileid(fileid)
-    if not group_name or not file_name then
-        return nil, "fileid error:" .. err
-    end
-    return self:append_by_buff(group_name, file_name, sock, size)
-end
-
 -- set variavle method
 function set_timeout(self, timeout)
     local sock = self.sock
@@ -595,14 +648,6 @@ function set_keepalive(self, ...)
     return sock:setkeepalive(...)
 end
 
-function socket_close(self)
-    local sock = self.sock
-    if not sock then
-        return nil, "not initialized"
-    end
-    return sock:close()
-end
-
 local class_mt = {
     -- to prevent use of casual module global variables
     __newindex = function (table, key, val)
@@ -611,4 +656,3 @@ local class_mt = {
 }
 
 setmetatable(_M, class_mt)
-
